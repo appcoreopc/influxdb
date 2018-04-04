@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -147,7 +148,29 @@ func (w *csvFormatter) WriteResponse(resp Response) (n int, err error) {
 			}
 		}
 
-		for _, row := range result.Series {
+		for i, row := range result.Series {
+			if i > 1 && !reflect.DeepEqual(result.Series[i-1].Columns, row.Columns) {
+				// The columns have changed. Print a newline and reprint the header.
+				csv.Flush()
+				if err := csv.Error(); err != nil {
+					return n, err
+				}
+
+				out, err := io.WriteString(w, "\n")
+				if err != nil {
+					return n, err
+				}
+				n += out
+
+				w.columns = make([]string, 2+len(row.Columns))
+				w.columns[0] = "name"
+				w.columns[1] = "tags"
+				copy(w.columns[2:], row.Columns)
+				if err := csv.Write(w.columns); err != nil {
+					return n, err
+				}
+			}
+
 			w.columns[0] = row.Name
 			if len(row.Tags) > 0 {
 				w.columns[1] = string(models.NewTags(row.Tags).HashKey()[1:])
